@@ -23,24 +23,21 @@ class StockServiceTest {
     private StockRepository stockRepository;
 
     @BeforeEach
-    void before() {
-        // 테스트 전 ID 1L, 재고 100개 세팅
-        Stock stock = new Stock(1L, 100L);
-        stockRepository.saveAndFlush(stock);
+    void setUp() {
+        // 실제 DB에 재고 100개 세팅
+        stockRepository.saveAndFlush(new Stock(1L, 100L));
     }
 
     @AfterEach
-    void after() {
+    void tearDown() {
         stockRepository.deleteAll();
     }
 
     @Test
-    @DisplayName("동시에 100개의 요청이 들어올 때 재고 차감 테스트")
-    void decrease_100_requests_concurrently() throws InterruptedException {
+    @DisplayName("실제 DB 비관적 락: 100개 동시 차감 시 정확히 0이 되어야 한다")
+    void pessimisticLock_realDb_test() throws InterruptedException {
         int threadCount = 100;
-        // 32개의 스레드 풀 생성
         ExecutorService executorService = Executors.newFixedThreadPool(32);
-        // 100개의 스레드가 모두 끝날 때까지 대기하도록 돕는 Latch
         CountDownLatch latch = new CountDownLatch(threadCount);
 
         for (int i = 0; i < threadCount; i++) {
@@ -53,12 +50,10 @@ class StockServiceTest {
             });
         }
 
-        latch.await(); // 100개 작업이 모두 끝날 때까지 메인 스레드 대기
+        latch.await();
 
         Stock stock = stockRepository.findById(1L).orElseThrow();
 
-        // 예상되는 잔여 재고: 100 - 100 = 0개
-        System.out.println("====== 최종 남은 재고: " + stock.getQuantity() + " ======");
         assertThat(stock.getQuantity()).isEqualTo(0L);
     }
 }
