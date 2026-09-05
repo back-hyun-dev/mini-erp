@@ -16,7 +16,7 @@ public class StockController {
             @PathVariable Long id,
             @RequestBody StockDecreaseRequest request
     ) {
-        stockService.decrease(id, request.getQuantity());
+        stockService.decreaseWithPessimisticLock(id, request.getQuantity());
         return ResponseEntity.ok().build();
     }
 }
