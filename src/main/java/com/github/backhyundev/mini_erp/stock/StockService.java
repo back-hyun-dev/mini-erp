@@ -20,14 +20,11 @@ public class StockService {
 
     // 2. 재고 차감 로직
     @Transactional
-    public void decrease(Long id, Long quantity) {
-        // Stock 조회 (없으면 예외 발생)
-        Stock stock = stockRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 재고입니다. id=" + id));
+    public void decreaseWithPessimisticLock(Long id, Long quantity) {
+        // 락이 걸린 조회 메서드 사용
+        Stock stock = stockRepository.findByIdWithPessimisticLock(id)
+                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 재고입니다."));
 
-        // 재고 차감 (Stock 엔티티 내부 메서드 호출)
         stock.decrease(quantity);
-
-        // JPA의 영속성 컨텍스트(Dirty Checking) 덕분에 별도의 save() 호출 없이도 트랜잭션 종료 시 DB에 반영됩니다.
     }
 }
