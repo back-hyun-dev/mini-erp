@@ -10,7 +10,7 @@ public class StockService {
 
     private final StockRepository stockRepository;
 
-    // 1. 초기 재고 데이터 생성 (Stock 저장)
+    // 1. 초기 재고 데이터 생성
     @Transactional
     public Long createStock(Long productId, Long quantity) {
         Stock stock = new Stock(productId, quantity);
@@ -18,13 +18,10 @@ public class StockService {
         return savedStock.getId();
     }
 
-    // 2. 재고 차감 로직
-    @Transactional
-    public void decreaseWithPessimisticLock(Long id, Long quantity) {
-        // 락이 걸린 조회 메서드 사용
-        Stock stock = stockRepository.findByIdWithPessimisticLock(id)
+    // 2. 재고 조회 (단순 조회)
+    @Transactional(readOnly = true)
+    public Stock getStock(Long id) {
+        return stockRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 재고입니다."));
-
-        stock.decrease(quantity);
     }
 }

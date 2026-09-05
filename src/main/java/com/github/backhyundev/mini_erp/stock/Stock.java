@@ -1,10 +1,6 @@
 package com.github.backhyundev.mini_erp.stock;
 
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -22,6 +18,9 @@ public class Stock {
     private Long productId; // 상품 ID
 
     private Long quantity;  // 재고 수량
+
+    @Version
+    private Long version;
 
     public Stock(Long productId, Long quantity) {
         this.productId = productId;

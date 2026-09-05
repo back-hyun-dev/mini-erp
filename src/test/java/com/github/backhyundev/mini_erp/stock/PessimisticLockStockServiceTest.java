@@ -14,10 +14,10 @@ import java.util.concurrent.Executors;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest
-class StockServiceTest {
+class PessimisticLockStockServiceTest {
 
     @Autowired
-    private StockService stockService;
+    private PessimisticLockStockService pessimisticLockStockService;
 
     @Autowired
     private StockRepository stockRepository;
@@ -43,7 +43,7 @@ class StockServiceTest {
         for (int i = 0; i < threadCount; i++) {
             executorService.submit(() -> {
                 try {
-                    stockService.decreaseWithPessimisticLock(1L, 1L);
+                    pessimisticLockStockService.decrease(1L, 1L);
                 } finally {
                     latch.countDown();
                 }

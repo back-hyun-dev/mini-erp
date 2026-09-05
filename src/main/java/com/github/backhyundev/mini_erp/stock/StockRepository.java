@@ -9,8 +9,13 @@ import java.util.Optional;
 
 public interface StockRepository extends JpaRepository<Stock, Long> {
 
-    // SELECT ... FOR UPDATE 쿼리가 나가며 조회할 때 DB 락을 겁니다.
+    // 1. 비관적 락
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select s from Stock s where s.id = :id")
     Optional<Stock> findByIdWithPessimisticLock(@Param("id") Long id);
+
+    // 2. 낙관적 락
+    @Lock(LockModeType.OPTIMISTIC)
+    @Query("select s from Stock s where s.id = :id")
+    Stock findByIdWithOptimisticLock(@Param("id") Long id);
 }
