@@ -30,6 +30,7 @@ dependencies {
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 	testAnnotationProcessor 'org.projectlombok:lombok'
 	implementation 'com.mysql:mysql-connector-j'
+	implementation 'org.redisson:redisson-spring-boot-starter:3.27.2'
 }
 
 tasks.named('test') {
