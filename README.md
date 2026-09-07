@@ -7,7 +7,7 @@ Spring Boot와 JPA 기반으로 구축한 재고 관리 및 동시성 제어 엔
 
 ## Tech Stack
 - **Language**: Java 17
-- **Framework**: Spring Boot 3.x
+- **Framework**: Spring Boot 4.1.1
 - **ORM / Database**: Spring Data JPA, mySQL
 - **Build Tool**: Gradle
 - **Testing**: JUnit 5, AssertJ
