@@ -63,7 +63,7 @@ Spring Boot와 JPA 기반으로 구축한 재고 관리 및 동시성 제어 엔
 | `id` | Long | PK (Auto-Increment) | 이력 식별자 |
 | `stockId` | Long | Not Null, Unupdatable | 대상 재고 ID (간접 참조) |
 | `amount` | Integer | Not Null, Unupdatable | 변동 수량 (+/-) |
-| `type` | StockTransactionType | Not Null, Unupdatable | 변동 유형 Enum (`INBOUND`, `OUTBOUND`, `ADJUSTMENT` 등) |
+| `type` | StockTransactionType | Not Null, Unupdatable | 변동 유형 Enum (`INCOMING`, `RESERVE`, `ADJUST` 등) |
 | `reasonDetail` | String | Nullable, Unupdatable | 관리자 수동 조정 시 상세 사유 |
 | `orderId` | Long | Nullable, Unupdatable | 연관 주문 ID (자동 적재 시 사용) |
 | `createdBy` | String | Not Null, Unupdatable | 작업 주체 (`"SYSTEM"`, `"ADMIN_KIM"` 등) |

@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.Immutable;
 
 import java.time.LocalDateTime;
 
@@ -11,34 +12,33 @@ import java.time.LocalDateTime;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Table(name = "stock_history")
+@Immutable
 public class StockHistory {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, updatable = false)
+    @Column(nullable = false)
     private Long stockId;
 
-    @Column(nullable = false, updatable = false)
+    @Column(nullable = false)
     private Integer amount; // 변동 수량 (+5, -2 등)
 
     // 1. 큰 범주의 변동 사유 (시스템 자동 지정)
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, updatable = false)
+    @Column(nullable = false)
     private StockTransactionType type;
 
     // 2. 관리자 수동 조정 시 상세 사유 (선택 사항: 예 - "운송 중 파손으로 폐기")
-    @Column(updatable = false)
     private String reasonDetail;
 
-    @Column(updatable = false)
     private Long orderId;
 
-    @Column(nullable = false, updatable = false)
+    @Column(nullable = false)
     private String createdBy; // "USER_102", "ADMIN_KIM", "SYSTEM"
 
-    @Column(nullable = false, updatable = false)
+    @Column(nullable = false)
     private LocalDateTime createdAt;
 
     private StockHistory(Long stockId, Integer amount, StockTransactionType type, String reasonDetail, Long orderId, String createdBy) {
