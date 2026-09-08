@@ -33,6 +33,44 @@ Spring Boot와 JPA 기반으로 구축한 재고 관리 및 동시성 제어 엔
 * **Zero-Cost Abstraction**: 초기 개발 단계에서는 오버 엔지니어링을 지양하고 가벼운 Long (Auto-Increment) 방식을 채택하여 빠른 개발 속도 및 DB 인덱스 성능 확보.
 * **Future-Proof Strategy**: PK 규격을 64비트 정수(Long)로 고정함으로써, 향후 분산 DB(샤딩) 환경으로 확장하더라도 DB 스키마 변경 없이 애플리케이션 채번 알고리즘(TSID/Snowflake) 교체만으로 전환 가능하도록 설계.
 
+### 3. 데이터 불변성(Immutability) 및 간접 참조 기반의 추적성(Audit Trail) 확보
+* **간접 참조(Decoupling) 적용**: `@ManyToOne` 엔티티 직접 참조 대신 `stockId`(`Long`) 간접 참조를 채택하여 도메인 간 결합도를 제거하고, 연관 관계 탐색으로 인한 N+1 및 GC 오버헤드 차단.
+* **불변 이력 엔티티(`updatable = false`)**: 모든 이력 컬럼에 수정 불가 제약을 부여하여 과거 재고 변동 기록의 위변조 가능성을 원천 차단.
+* **정적 팩토리 메서드를 통한 도메인 안전성 확보**: `private` 생성자 기반으로 `createAutoHistory`(주문 연관 자동 적재)와 `createManualHistory`(관리자 수동 조정)를 분리하여, 인자 순서 오류나 필드 누락으로 인한 데이터 결함을 컴파일 및 객체 생성 시점에 방지.
+
+---
+
+## Domain Model Specification
+
+### 1. Stock (재고 엔티티)
+> 물리 재고와 선점 재고를 분리하여 동시성 및 가용 재고 불변식을 관리합니다.
+
+| Field | Type | Constraint | Description |
+| :--- | :--- | :--- | :--- |
+| `id` | Long | PK (Auto-Increment) | 재고 식별자 |
+| `productId` | Long | Not Null, Unique | 상품 ID (간접 참조) |
+| `quantity` | Integer | Not Null | 물리적 재고 수량 |
+| `allocatedQuantity` | Integer | Not Null | 선점(결제 대기) 재고 수량 |
+| `version` | Long | @Version | 낙관적 락(Optimistic Lock) 버전 |
+| `createdAt` | LocalDateTime | Not Null, Unupdatable | 최초 등록 일시 |
+| `updatedAt` | LocalDateTime | Not Null | 최종 수량 변경 일시 |
+
+### 2. StockHistory (재고 변동 이력 엔티티)
+> 데이터 불변성(Immutability)과 정합성을 최우선으로 고려한 이력 트래킹 엔티티입니다.
+
+| Field | Type | Constraint | Description |
+| :--- | :--- | :--- | :--- |
+| `id` | Long | PK (Auto-Increment) | 이력 식별자 |
+| `stockId` | Long | Not Null, Unupdatable | 대상 재고 ID (간접 참조) |
+| `amount` | Integer | Not Null, Unupdatable | 변동 수량 (+/-) |
+| `type` | StockTransactionType | Not Null, Unupdatable | 변동 유형 Enum (`INBOUND`, `OUTBOUND`, `ADJUSTMENT` 등) |
+| `reasonDetail` | String | Nullable, Unupdatable | 관리자 수동 조정 시 상세 사유 |
+| `orderId` | Long | Nullable, Unupdatable | 연관 주문 ID (자동 적재 시 사용) |
+| `createdBy` | String | Not Null, Unupdatable | 작업 주체 (`"SYSTEM"`, `"ADMIN_KIM"` 등) |
+| `createdAt` | LocalDateTime | Not Null, Unupdatable | 기록 생성 일시 (생성 시점 자동 할당) |
+
+---
+
 ## Test Strategy & Troubleshooting
 
 ### 1. 도메인 불변식 검증 및 계층형 테스트 설계
