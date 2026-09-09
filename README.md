@@ -8,7 +8,7 @@ Spring Boot와 JPA 기반으로 구축한 재고 관리 및 동시성 제어 엔
 ## Dev Logs (개발기)
 - [[Java/Spring] mini-ERP 개발기 #1 - Stock 엔티티 설계](https://velog.io/@back-hyun-dev/JavaSpring-mini-ERP-%EA%B0%9C%EB%B0%9C%EA%B8%B0-1-Stock-%EC%97%94%ED%8B%B0%ED%8B%B0-%EC%84%A4%EA%B3%84%EC%99%80-%EB%8B%A8%EC%9C%84-%ED%85%8C%EC%8A%A4%ED%8A%B8-%EA%B5%AC%EC%B6%95)
 - [[Java/Spring] mini-ERP 개발기 #2 - StockHistory 엔티티 설계](https://velog.io/@back-hyun-dev/JavaSpring-mini-ERP-%EA%B0%9C%EB%B0%9C%EA%B8%B0-2-StockHistory-%EC%97%94%ED%8B%B0%ED%8B%B0-%EC%84%A4%EA%B3%84)
-
+- [[Java/Spring] mini-ERP 개발기 #3 - StockService 구현](https://velog.io/@back-hyun-dev/JavaSpring-mini-ERP-%EA%B0%9C%EB%B0%9C%EA%B8%B0-3-StockService-%EA%B5%AC%ED%98%84)
 ---
 
 
@@ -44,7 +44,7 @@ Spring Boot와 JPA 기반으로 구축한 재고 관리 및 동시성 제어 엔
 * **간접 참조(Decoupling) 적용**: `@ManyToOne` 엔티티 직접 참조 대신 `stockId`(`Long`) 간접 참조를 채택하여 도메인 간 결합도를 제거하고, 연관 관계 탐색으로 인한 N+1 및 GC 오버헤드 차단.
 * **불변 이력 엔티티(`updatable = false`)**: 모든 이력 컬럼에 수정 불가 제약을 부여하여 과거 재고 변동 기록의 위변조 가능성을 원천 차단.
 * **정적 팩토리 메서드를 통한 도메인 안전성 확보**: `private` 생성자 기반으로 `createAutoHistory`(주문 연관 자동 적재)와 `createManualHistory`(관리자 수동 조정)를 분리하여, 인자 순서 오류나 필드 누락으로 인한 데이터 결함을 컴파일 및 객체 생성 시점에 방지.
-
+* **재고 상태 복원 및 감사(Audit)를 위한 스냅샷 저장**: 단순 변동량(`amount`) 외에도 변동 직후의 물리 재고(`snapshotQuantity`) 및 선점 재고(`snapshotAllocatedQuantity`) 스냅샷을 함께 보존합니다. 이를 통해 과거 전체 이력을 집계하는 $O(N)$ 연산 없이 **특정 시점의 재고 상태를 $O(1)$ 연산으로 조회 및 복원**할 수 있습니다.
 ---
 
 ## Domain Model Specification
@@ -70,6 +70,8 @@ Spring Boot와 JPA 기반으로 구축한 재고 관리 및 동시성 제어 엔
 | `id` | Long | PK (Auto-Increment) | 이력 식별자 |
 | `stockId` | Long | Not Null, Unupdatable | 대상 재고 ID (간접 참조) |
 | `amount` | Integer | Not Null, Unupdatable | 변동 수량 (+/-) |
+| `snapshotQuantity` | Integer | Not Null, Unupdatable | **변동 직후 물리 재고 수량 (스냅샷) |
+| `snapshotAllocatedQuantity` | Integer | Not Null, Unupdatable | 변동 직후 선점 재고 수량 (스냅샷) |
 | `type` | StockTransactionType | Not Null, Unupdatable | 변동 유형 Enum (`INCOMING`, `RESERVE`, `ADJUST` 등) |
 | `reasonDetail` | String | Nullable, Unupdatable | 관리자 수동 조정 시 상세 사유 |
 | `orderId` | Long | Nullable, Unupdatable | 연관 주문 ID (자동 적재 시 사용) |
