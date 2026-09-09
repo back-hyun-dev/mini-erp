@@ -47,10 +47,11 @@ public class StockHistory {
     @Column(nullable = false)
     private LocalDateTime createdAt;
 
-    private StockHistory(Long stockId, Long amount, Long snapshotQuantity, StockTransactionType type, String reasonDetail, Long orderId, String createdBy) {
+    private StockHistory(Long stockId, Long amount, Long snapshotQuantity, Long snapshotAllocatedQuantity, StockTransactionType type, String reasonDetail, Long orderId, String createdBy) {
         this.stockId = stockId;
         this.amount = amount;
         this.snapshotQuantity = snapshotQuantity;
+        this.snapshotAllocatedQuantity = snapshotAllocatedQuantity;
         this.type = type;
         this.reasonDetail = reasonDetail;
         this.orderId = orderId;
