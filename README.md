@@ -5,6 +5,12 @@ Spring Boot와 JPA 기반으로 구축한 재고 관리 및 동시성 제어 엔
 
 ---
 
+## Dev Logs (개발기)
+- [[Java/Spring] mini-ERP 개발기 #1 - Stock 엔티티 설계](https://velog.io/@back-hyun-dev/JavaSpring-mini-ERP-%EA%B0%9C%EB%B0%9C%EA%B8%B0-1-Stock-%EC%97%94%ED%8B%B0%ED%8B%B0-%EC%84%A4%EA%B3%84%EC%99%80-%EB%8B%A8%EC%9C%84-%ED%85%8C%EC%8A%A4%ED%8A%B8-%EA%B5%AC%EC%B6%95)
+- [[Java/Spring] mini-ERP 개발기 #2 - StockHistory 엔티티 설계](https://velog.io/@back-hyun-dev/JavaSpring-mini-ERP-%EA%B0%9C%EB%B0%9C%EA%B8%B0-2-StockHistory-%EC%97%94%ED%8B%B0%ED%8B%B0-%EC%84%A4%EA%B3%84)
+---
+
+
 ## Tech Stack
 - **Language**: Java 17
 - **Framework**: Spring Boot 4.1.1

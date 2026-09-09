@@ -23,7 +23,7 @@ public class StockHistory {
     private Long stockId;
 
     @Column(nullable = false)
-    private Integer amount; // 변동 수량 (+5, -2 등)
+    private Long amount; // 변동 수량 (+5, -2 등)
 
     // 1. 큰 범주의 변동 사유 (시스템 자동 지정)
     @Enumerated(EnumType.STRING)
@@ -41,7 +41,7 @@ public class StockHistory {
     @Column(nullable = false)
     private LocalDateTime createdAt;
 
-    private StockHistory(Long stockId, Integer amount, StockTransactionType type, String reasonDetail, Long orderId, String createdBy) {
+    private StockHistory(Long stockId, Long amount, StockTransactionType type, String reasonDetail, Long orderId, String createdBy) {
         this.stockId = stockId;
         this.amount = amount;
         this.type = type;
@@ -52,12 +52,12 @@ public class StockHistory {
     }
 
     // 편의 팩토리 메서드: 일반 시스템 자동 적재용 (상세 사유 없음)
-    public static StockHistory createAutoHistory(Long stockId, Integer amount, StockTransactionType type, Long orderId, String createdBy) {
+    public static StockHistory createAutoHistory(Long stockId, Long amount, StockTransactionType type, Long orderId, String createdBy) {
         return new StockHistory(stockId, amount, type, null, orderId, createdBy);
     }
 
     // 편의 팩토리 메서드: 관리자 수동 조정용 (상세 사유 포함)
-    public static StockHistory createManualHistory(Long stockId, Integer amount, StockTransactionType type, String reasonDetail, String createdBy) {
+    public static StockHistory createManualHistory(Long stockId, Long amount, StockTransactionType type, String reasonDetail, String createdBy) {
         return new StockHistory(stockId, amount, type, reasonDetail, null, createdBy);
     }
 }
