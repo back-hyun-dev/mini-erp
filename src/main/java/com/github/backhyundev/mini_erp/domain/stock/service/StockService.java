@@ -35,7 +35,7 @@ public class StockService {
         // 수량 증가 (신규 생성이든 기존이든 quantity + amount)
         stock.increase(amount);
 
-        recordHistory(stock.getId(), StockTransactionType.INCOMING, amount, orderId, DEFAULT_SYSTEM_USER);
+        recordHistory(stock.getId(), amount, StockTransactionType.INCOMING, orderId, DEFAULT_SYSTEM_USER);
     }
 
     // 3. 예약 주문건 입고 (입고되자마자 선점 묶음)
@@ -46,7 +46,7 @@ public class StockService {
         stock.increase(amount); // quantity 증가
         stock.reserve(amount);  // allocatedQuantity 증가
 
-        recordHistory(stock.getId(), StockTransactionType.INCOMING, amount, orderId, DEFAULT_SYSTEM_USER);
+        recordHistory(stock.getId(), amount, StockTransactionType.INCOMING, orderId, DEFAULT_SYSTEM_USER);
     }
 
     // 4. 출고 전 취소 (선점 해제)
@@ -56,7 +56,7 @@ public class StockService {
 
         stock.release(amount); // allocatedQuantity 차감
 
-        recordHistory(stock.getId(), StockTransactionType.CANCEL, amount, orderId, DEFAULT_SYSTEM_USER);
+        recordHistory(stock.getId(), amount, StockTransactionType.CANCEL, orderId, DEFAULT_SYSTEM_USER);
     }
 
     // 5. 주문 선점
@@ -66,7 +66,7 @@ public class StockService {
 
         stock.reserve(amount);
 
-        recordHistory(stock.getId(), StockTransactionType.RESERVE, amount, orderId, DEFAULT_SYSTEM_USER);
+        recordHistory(stock.getId(), amount, StockTransactionType.RESERVE, orderId, DEFAULT_SYSTEM_USER);
     }
 
     // 6. 출고 확정
@@ -76,7 +76,7 @@ public class StockService {
 
         stock.decrease(amount);
 
-        recordHistory(stock.getId(), StockTransactionType.DECREASE, amount, orderId, DEFAULT_SYSTEM_USER);
+        recordHistory(stock.getId(), amount, StockTransactionType.DECREASE, orderId, DEFAULT_SYSTEM_USER);
     }
 
     // 7. 관리자가 조정 (파손 / 분실 등)
@@ -107,7 +107,7 @@ public class StockService {
     }
 
     // 1. 기본 히스토리 적재
-    private void recordHistory(Long stockId, StockTransactionType type, Long amount, Long orderId, String createdBy) {
+    private void recordHistory(Long stockId, Long amount, StockTransactionType type, Long orderId, String createdBy) {
         StockHistory history = StockHistory.createAutoHistory(stockId, amount, type, orderId, createdBy);
         stockHistoryRepository.save(history);
     }
