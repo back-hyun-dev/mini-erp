@@ -29,13 +29,18 @@ public class StockService {
     // 2. 출고 후 반품 입고 (주문 연관 입고)
     @Transactional
     public void increaseStock(Long productId, Long amount, Long orderId) {
-        // DB에 Stock이 없으면 STOCK_NOT_FOUND 에러 코드를 던짐
         Stock stock = getStockByProductIdOrThrow(productId);
-
-        // 수량 증가 (신규 생성이든 기존이든 quantity + amount)
         stock.increase(amount);
 
-        recordHistory(stock.getId(), amount, StockTransactionType.INCOMING, orderId, DEFAULT_SYSTEM_USER);
+        recordHistory(
+                stock.getId(),
+                amount,
+                stock.getQuantity(),
+                stock.getAllocatedQuantity(),
+                StockTransactionType.INCOMING,
+                orderId,
+                DEFAULT_SYSTEM_USER
+        );
     }
 
     // 3. 예약 주문건 입고 (입고되자마자 선점 묶음)
@@ -46,7 +51,15 @@ public class StockService {
         stock.increase(amount); // quantity 증가
         stock.reserve(amount);  // allocatedQuantity 증가
 
-        recordHistory(stock.getId(), amount, StockTransactionType.INCOMING, orderId, DEFAULT_SYSTEM_USER);
+        recordHistory(
+                stock.getId(),
+                amount,
+                stock.getQuantity(),
+                stock.getAllocatedQuantity(),
+                StockTransactionType.INCOMING,
+                orderId,
+                DEFAULT_SYSTEM_USER
+        );
     }
 
     // 4. 출고 전 취소 (선점 해제)
@@ -56,7 +69,15 @@ public class StockService {
 
         stock.release(amount); // allocatedQuantity 차감
 
-        recordHistory(stock.getId(), amount, StockTransactionType.CANCEL, orderId, DEFAULT_SYSTEM_USER);
+        recordHistory(
+                stock.getId(),
+                amount,
+                stock.getQuantity(),
+                stock.getAllocatedQuantity(),
+                StockTransactionType.CANCEL,
+                orderId,
+                DEFAULT_SYSTEM_USER
+        );
     }
 
     // 5. 주문 선점
@@ -66,7 +87,15 @@ public class StockService {
 
         stock.reserve(amount);
 
-        recordHistory(stock.getId(), amount, StockTransactionType.RESERVE, orderId, DEFAULT_SYSTEM_USER);
+        recordHistory(
+                stock.getId(),
+                amount,
+                stock.getQuantity(),
+                stock.getAllocatedQuantity(),
+                StockTransactionType.RESERVE,
+                orderId,
+                DEFAULT_SYSTEM_USER
+        );
     }
 
     // 6. 출고 확정
@@ -76,7 +105,15 @@ public class StockService {
 
         stock.decrease(amount);
 
-        recordHistory(stock.getId(), amount, StockTransactionType.DECREASE, orderId, DEFAULT_SYSTEM_USER);
+        recordHistory(
+                stock.getId(),
+                amount,
+                stock.getQuantity(),
+                stock.getAllocatedQuantity(),
+                StockTransactionType.DECREASE,
+                orderId,
+                DEFAULT_SYSTEM_USER
+        );
     }
 
     // 7. 관리자가 조정 (파손 / 분실 등)
@@ -84,20 +121,24 @@ public class StockService {
     public void adjust(Long productId, Long newQuantity, String reasonDetail, String adminUser) {
         Stock stock = getStockByProductIdOrThrow(productId);
 
-        // 2. 사유 입력 검증 (수동 조정은 사유 필수)
         if (reasonDetail == null || reasonDetail.isBlank()) {
             throw new IllegalArgumentException("재고 조정 시 사유(reasonDetail)는 필수입니다.");
         }
 
-        // 3. 이전 수량 기록용 보관
         Long previousQuantity = stock.getQuantity();
-
-        // 4. 엔티티 재고 조정 (엔티티 내부에서 newQuantity < allocatedQuantity 검증)
         stock.adjust(newQuantity);
 
-        // 5. 수동 히스토리 적재 (변동 차이값 = newQuantity - previousQuantity)
         Long amountDiff = newQuantity - previousQuantity;
-        recordManualHistory(stock.getId(), amountDiff, StockTransactionType.ADJUST, reasonDetail, adminUser);
+
+        recordManualHistory(
+                stock.getId(),
+                amountDiff,
+                stock.getQuantity(),
+                stock.getAllocatedQuantity(),
+                StockTransactionType.ADJUST,
+                reasonDetail,
+                adminUser
+        );
     }
 
     // Helper 메서드 (IllegalArgumentException -> BusinessException + ErrorCode로 변경)
@@ -106,15 +147,47 @@ public class StockService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.STOCK_NOT_FOUND));
     }
 
-    // 1. 기본 히스토리 적재
-    private void recordHistory(Long stockId, Long amount, StockTransactionType type, Long orderId, String createdBy) {
-        StockHistory history = StockHistory.createAutoHistory(stockId, amount, type, orderId, createdBy);
+    // 1. 기본 히스토리 적재 (자동)
+    private void recordHistory(
+            Long stockId,
+            Long amount,
+            Long snapshotQuantity,
+            Long snapshotAllocatedQuantity,
+            StockTransactionType type,
+            Long orderId,
+            String createdBy
+    ) {
+        StockHistory history = StockHistory.createAutoHistory(
+                stockId,
+                amount,
+                snapshotQuantity,
+                snapshotAllocatedQuantity,
+                type,
+                orderId,
+                createdBy
+        );
         stockHistoryRepository.save(history);
     }
 
     // 2. 수동 조정 히스토리 적재 (조정)
-    private void recordManualHistory(Long stockId, Long amount, StockTransactionType type, String reasonDetail, String createdBy) {
-        StockHistory history = StockHistory.createManualHistory(stockId, amount, type, reasonDetail, createdBy);
+    private void recordManualHistory(
+            Long stockId,
+            Long amount,
+            Long snapshotQuantity,
+            Long snapshotAllocatedQuantity,
+            StockTransactionType type,
+            String reasonDetail,
+            String createdBy
+    ) {
+        StockHistory history = StockHistory.createManualHistory(
+                stockId,
+                amount,
+                snapshotQuantity,
+                snapshotAllocatedQuantity,
+                type,
+                reasonDetail,
+                createdBy
+        );
         stockHistoryRepository.save(history);
     }
 }

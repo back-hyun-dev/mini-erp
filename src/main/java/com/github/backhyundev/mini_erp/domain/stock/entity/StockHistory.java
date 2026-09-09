@@ -25,6 +25,12 @@ public class StockHistory {
     @Column(nullable = false)
     private Long amount; // 변동 수량 (+5, -2 등)
 
+    @Column(nullable = false)
+    private Long snapshotQuantity; // 변동 직후 최종 잔여 재고 수량 (스냅샷)
+
+    @Column(nullable = false)
+    private Long snapshotAllocatedQuantity; // 변동 직후 선점 재고 수량 (스냅샷)
+
     // 1. 큰 범주의 변동 사유 (시스템 자동 지정)
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -41,9 +47,10 @@ public class StockHistory {
     @Column(nullable = false)
     private LocalDateTime createdAt;
 
-    private StockHistory(Long stockId, Long amount, StockTransactionType type, String reasonDetail, Long orderId, String createdBy) {
+    private StockHistory(Long stockId, Long amount, Long snapshotQuantity, StockTransactionType type, String reasonDetail, Long orderId, String createdBy) {
         this.stockId = stockId;
         this.amount = amount;
+        this.snapshotQuantity = snapshotQuantity;
         this.type = type;
         this.reasonDetail = reasonDetail;
         this.orderId = orderId;
@@ -52,12 +59,46 @@ public class StockHistory {
     }
 
     // 편의 팩토리 메서드: 일반 시스템 자동 적재용 (상세 사유 없음)
-    public static StockHistory createAutoHistory(Long stockId, Long amount, StockTransactionType type, Long orderId, String createdBy) {
-        return new StockHistory(stockId, amount, type, null, orderId, createdBy);
+    public static StockHistory createAutoHistory(
+            Long stockId,
+            Long amount,
+            Long snapshotQuantity,
+            Long snapshotAllocatedQuantity,
+            StockTransactionType type,
+            Long orderId,
+            String createdBy
+    ) {
+        return new StockHistory(
+                stockId,
+                amount,
+                snapshotQuantity,
+                snapshotAllocatedQuantity,
+                type,
+                null,
+                orderId,
+                createdBy
+        );
     }
 
     // 편의 팩토리 메서드: 관리자 수동 조정용 (상세 사유 포함)
-    public static StockHistory createManualHistory(Long stockId, Long amount, StockTransactionType type, String reasonDetail, String createdBy) {
-        return new StockHistory(stockId, amount, type, reasonDetail, null, createdBy);
+    public static StockHistory createManualHistory(
+            Long stockId,
+            Long amount,
+            Long snapshotQuantity,
+            Long snapshotAllocatedQuantity,
+            StockTransactionType type,
+            String reasonDetail,
+            String createdBy
+    ) {
+        return new StockHistory(
+                stockId,
+                amount,
+                snapshotQuantity,
+                snapshotAllocatedQuantity,
+                type,
+                reasonDetail,
+                null,
+                createdBy
+        );
     }
 }
