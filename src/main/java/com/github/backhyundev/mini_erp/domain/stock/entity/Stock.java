@@ -39,7 +39,7 @@ public class Stock {
     private Long version; // 낙관적 락을 위한 동시성 제어 버전
 
     // === 생성자 ===
-    public Stock(Long warehouseId, Long productId, Long initialQuantity) {
+    Stock(Long warehouseId, Long productId, Long initialQuantity) {
         validateNotNull(warehouseId, "창고 ID는 필수입니다.");
         validateNotNull(productId, "상품 ID는 필수입니다.");
         validatePositiveOrZero(initialQuantity, "초기 재고는 0 이상이어야 합니다.");

@@ -5,6 +5,13 @@ Spring Boot와 JPA 기반으로 구축한 재고 관리 및 동시성 제어 엔
 
 ---
 
+## Dev Logs (개발기)
+- [[Java/Spring] mini-ERP 개발기 #1 - Stock 엔티티 설계](https://velog.io/@back-hyun-dev/JavaSpring-mini-ERP-%EA%B0%9C%EB%B0%9C%EA%B8%B0-1-Stock-%EC%97%94%ED%8B%B0%ED%8B%B0-%EC%84%A4%EA%B3%84%EC%99%80-%EB%8B%A8%EC%9C%84-%ED%85%8C%EC%8A%A4%ED%8A%B8-%EA%B5%AC%EC%B6%95)
+- [[Java/Spring] mini-ERP 개발기 #2 - StockHistory 엔티티 설계](https://velog.io/@back-hyun-dev/JavaSpring-mini-ERP-%EA%B0%9C%EB%B0%9C%EA%B8%B0-2-StockHistory-%EC%97%94%ED%8B%B0%ED%8B%B0-%EC%84%A4%EA%B3%84)
+
+---
+
+
 ## Tech Stack
 - **Language**: Java 17
 - **Framework**: Spring Boot 4.1.1
@@ -32,6 +39,74 @@ Spring Boot와 JPA 기반으로 구축한 재고 관리 및 동시성 제어 엔
 ### 2. 대규모 분산 환경을 고려한 식별자(PK) 확장 전략 (YAGNI 원칙)
 * **Zero-Cost Abstraction**: 초기 개발 단계에서는 오버 엔지니어링을 지양하고 가벼운 Long (Auto-Increment) 방식을 채택하여 빠른 개발 속도 및 DB 인덱스 성능 확보.
 * **Future-Proof Strategy**: PK 규격을 64비트 정수(Long)로 고정함으로써, 향후 분산 DB(샤딩) 환경으로 확장하더라도 DB 스키마 변경 없이 애플리케이션 채번 알고리즘(TSID/Snowflake) 교체만으로 전환 가능하도록 설계.
+
+### 3. 데이터 불변성(Immutability) 및 간접 참조 기반의 추적성(Audit Trail) 확보
+* **간접 참조(Decoupling) 적용**: `@ManyToOne` 엔티티 직접 참조 대신 `stockId`(`Long`) 간접 참조를 채택하여 도메인 간 결합도를 제거하고, 연관 관계 탐색으로 인한 N+1 및 GC 오버헤드 차단.
+* **불변 이력 엔티티(`updatable = false`)**: 모든 이력 컬럼에 수정 불가 제약을 부여하여 과거 재고 변동 기록의 위변조 가능성을 원천 차단.
+* **정적 팩토리 메서드를 통한 도메인 안전성 확보**: `private` 생성자 기반으로 `createAutoHistory`(주문 연관 자동 적재)와 `createManualHistory`(관리자 수동 조정)를 분리하여, 인자 순서 오류나 필드 누락으로 인한 데이터 결함을 컴파일 및 객체 생성 시점에 방지.
+
+---
+
+## Domain Model Specification
+
+### 1. Stock (재고 엔티티)
+> 물리 재고와 선점 재고를 분리하여 동시성 및 가용 재고 불변식을 관리합니다.
+
+| Field | Type | Constraint | Description |
+| :--- | :--- | :--- | :--- |
+| `id` | Long | PK (Auto-Increment) | 재고 식별자 |
+| `productId` | Long | Not Null, Unique | 상품 ID (간접 참조) |
+| `quantity` | Integer | Not Null | 물리적 재고 수량 |
+| `allocatedQuantity` | Integer | Not Null | 선점(결제 대기) 재고 수량 |
+| `version` | Long | @Version | 낙관적 락(Optimistic Lock) 버전 |
+| `createdAt` | LocalDateTime | Not Null, Unupdatable | 최초 등록 일시 |
+| `updatedAt` | LocalDateTime | Not Null | 최종 수량 변경 일시 |
+
+### 2. StockHistory (재고 변동 이력 엔티티)
+> 데이터 불변성(Immutability)과 정합성을 최우선으로 고려한 이력 트래킹 엔티티입니다.
+
+| Field | Type | Constraint | Description |
+| :--- | :--- | :--- | :--- |
+| `id` | Long | PK (Auto-Increment) | 이력 식별자 |
+| `stockId` | Long | Not Null, Unupdatable | 대상 재고 ID (간접 참조) |
+| `amount` | Integer | Not Null, Unupdatable | 변동 수량 (+/-) |
+| `type` | StockTransactionType | Not Null, Unupdatable | 변동 유형 Enum (`INCOMING`, `RESERVE`, `ADJUST` 등) |
+| `reasonDetail` | String | Nullable, Unupdatable | 관리자 수동 조정 시 상세 사유 |
+| `orderId` | Long | Nullable, Unupdatable | 연관 주문 ID (자동 적재 시 사용) |
+| `createdBy` | String | Not Null, Unupdatable | 작업 주체 (`"SYSTEM"`, `"ADMIN_KIM"` 등) |
+| `createdAt` | LocalDateTime | Not Null, Unupdatable | 기록 생성 일시 (생성 시점 자동 할당) |
+
+### 3.StockService (비즈니스 서비스 레이어)
+> 재고 상태 변동 및 주문/관리자 연관 처리를 수행하며, 모든 작업에 대한 이력(StockHistory)을 적재합니다.
+
+| 메서드명 | 파라미터 | 주요 역할 및 설명 |
+| :--- | :--- | :--- |
+| `increaseStock` | productId, amount | 일반 입고 (주문 연관 없음, `orderId=null` 오버로딩 위임) |
+| `increaseStock` | productId, amount, orderId | 주문 연관 입고 (`INCOMING` 이력 적재) |
+| `increaseAndReserveStock` | productId, amount, orderId | 예약 주문건 입고 (`quantity`, `allocatedQuantity` 동시 증가) |
+| `cancelReservation` | productId, amount, orderId | 출고 전 취소 (`release` 호출, `CANCEL` 이력 적재) |
+| `reserve` | productId, amount, orderId | 주문 선점 (가용 재고 확인 후 `RESERVE` 이력 적재) |
+| `decrease` | productId, amount, orderId | 출고 확정 (`decrease` 호출, `DECREASE` 이력 적재) |
+| `adjust` | productId, newQuantity, reasonDetail, adminUser | 수동 조정 (차이값 `amountDiff` 계산 및 `ADJUST` 이력 적재) |
+
+---
+
+## Error Handling & Exception Strategy
+
+비즈니스 예외는 도메인 전용 예외 클래스인 `BusinessException`과 `ErrorCode` Enum을 사용하여 일관된 규격으로 관리됩니다.
+
+### ErrorCode Specification
+
+| ErrorCode | HttpStatus | Code | Error Message | 발생 조건 |
+| :--- | :--- | :--- | :--- | :--- |
+| `STOCK_NOT_FOUND` | 404 NOT_FOUND | S001 | 등록되지 않은 재고입니다. 등록을 먼저 진행해주세요. | `getStockByProductIdOrThrow` 조회 실패 시 |
+| `STOCK_ALREADY_EXISTS` | 400 BAD_REQUEST | S002 | 이미 해당 창고에 등록된 재고가 존재합니다. | 중복 재고 레코드 생성 시도 시 |
+| `NOT_ENOUGH_STOCK` | 400 BAD_REQUEST | S003 | 가용 재고 수량이 부족합니다. | 선점 시 가용 재고(`quantity - allocatedQuantity`) 초과 시 |
+| `INVALID_STOCK_AMOUNT` | 400 BAD_REQUEST | S004 | 재고 수량은 0보다 커야 합니다. | 0 이하 수량 입력 또는 선점 수량 미만으로 조정 시 |
+
+* **입력값 검증 예외 (`IllegalArgumentException`):** `adjust` 수행 시 필수 인자인 조정 사유(`reasonDetail`)가 누락되거나 공백(`isBlank()`)인 경우 발생합니다.
+
+---
 
 ## Test Strategy & Troubleshooting
 
