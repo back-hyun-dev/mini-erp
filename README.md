@@ -1,7 +1,7 @@
 # 재고 관리 미니 ERP System
 
 Spring Boot와 JPA 기반으로 구축한 재고 관리 및 동시성 제어 엔진입니다.  
-고객 요청이 몰릴 때 발생하는 **동시성 이슈(Race Condition)** 와 **초과판매(Overselling)** 문제를 방지하기 위해, 도메인 불변식 수립 및 JPA 낙관적 락(Optimistic Lock) 기반의 방어 체계를 구축했습니다.
+고객 요청이 몰릴 때 발생하는 **동시성 이슈(Race Condition)** 와 **초과판매(Overselling)** 문제를 방지하기 위해, 도메인 불변식 수립 및 우선적으로 JPA 낙관적 락(Optimistic Lock) 기반의 방어 체계를 구축했습니다.
 
 ---
 
@@ -25,6 +25,7 @@ Spring Boot와 JPA 기반으로 구축한 재고 관리 및 동시성 제어 엔
 - **3단계 재고 라이프사이클 관리**: 결제 시점 선점(`reserve`), 물류 출고 차감(`decrease`), 재물조사 수량 조정(`adjust`)
 - **도메인 정합성 보장**: JPA `Optional` 기반 안전한 예외 처리 및 도메인 엔티티 내 불변식 검증
 - **동시성 제어 및 Race Condition 방지**: 멀티스레드 환경에서의 재고 차감 정합성 보장
+- **글로벌 예외 파이프라인 구축**: 예외 응답을 ErrorResponse DTO 및 ErrorCode Enum 기반 정적 규격으로 하여 글로벌 파이프라인 표준화
 
 ---
 
@@ -45,6 +46,12 @@ Spring Boot와 JPA 기반으로 구축한 재고 관리 및 동시성 제어 엔
 * **불변 이력 엔티티(`updatable = false`)**: 모든 이력 컬럼에 수정 불가 제약을 부여하여 과거 재고 변동 기록의 위변조 가능성을 원천 차단.
 * **정적 팩토리 메서드를 통한 도메인 안전성 확보**: `private` 생성자 기반으로 `createAutoHistory`(주문 연관 자동 적재)와 `createManualHistory`(관리자 수동 조정)를 분리하여, 인자 순서 오류나 필드 누락으로 인한 데이터 결함을 컴파일 및 객체 생성 시점에 방지.
 * **재고 상태 복원 및 감사(Audit)를 위한 스냅샷 저장**: 단순 변동량(`amount`) 외에도 변동 직후의 물리 재고(`snapshotQuantity`) 및 선점 재고(`snapshotAllocatedQuantity`) 스냅샷을 함께 보존합니다. 이를 통해 과거 전체 이력을 집계하는 $O(N)$ 연산 없이 **특정 시점의 재고 상태를 $O(1)$ 연산으로 조회 및 복원**할 수 있습니다.
+
+### 4. 레이어별 검증 역할 분리와 글로벌 예외 파이프라인 표준화
+* **글로벌 예외 핸들링 (`@RestControllerAdvice`)**: 일관성 있는 예외 처리를 위해 `ErrorResponse` DTO와 `ErrorCode` Enum 기반의 정적 타입 응답 구조로 표준 예외 파이프라인 구현.
+* **계층별 Fast-Fail 및 책임 분리**:
+    * **Controller / DTO**: 요청 진입 시점에서 `@Valid` 어노테이션으로 바인딩 오류 및 유효하지 않은 입력값을 1차 차단하여 불필요한 DB I/O 비용 차단.
+    * **Service Layer**: `@Transactional(readOnly = true)` 기반 조회 최적화와 함께, 미등록 재고 접근 시 `BusinessException(STOCK_NOT_FOUND)`을 던져 후속 비즈니스 로직 진행 차단.
 ---
 
 ## Domain Model Specification
@@ -95,17 +102,18 @@ Spring Boot와 JPA 기반으로 구축한 재고 관리 및 동시성 제어 엔
 
 ## Error Handling & Exception Strategy
 
-비즈니스 예외는 도메인 전용 예외 클래스인 `BusinessException`과 `ErrorCode` Enum을 사용하여 일관된 규격으로 관리됩니다.
+> 비즈니스 예외는 도메인 전용 예외 클래스인 `BusinessException`과 `ErrorCode` Enum을 사용하여 일관된 규격으로 관리하며, `GlobalExceptionHandler`를 통해 `ErrorResponse` DTO 구조로 공통 응답합니다.
 
 ### ErrorCode Specification
-
 | ErrorCode | HttpStatus | Code | Error Message | 발생 조건 |
 | :--- | :--- | :--- | :--- | :--- |
-| `STOCK_NOT_FOUND` | 404 NOT_FOUND | S001 | 등록되지 않은 재고입니다. 등록을 먼저 진행해주세요. | `getStockByProductIdOrThrow` 조회 실패 시 |
-| `STOCK_ALREADY_EXISTS` | 400 BAD_REQUEST | S002 | 이미 해당 창고에 등록된 재고가 존재합니다. | 중복 재고 레코드 생성 시도 시 |
-| `NOT_ENOUGH_STOCK` | 400 BAD_REQUEST | S003 | 가용 재고 수량이 부족합니다. | 선점 시 가용 재고(`quantity - allocatedQuantity`) 초과 시 |
-| `INVALID_STOCK_AMOUNT` | 400 BAD_REQUEST | S004 | 재고 수량은 0보다 커야 합니다. | 0 이하 수량 입력 또는 선점 수량 미만으로 조정 시 |
-
+| `STOCK_NOT_FOUND` | 404 NOT_FOUND | S001 | 등록되지 않은 재고입니다. 등록을 먼저 진행해주세요. | 미등록 재고 대상 수량 변경 시도 시 (`getStockOrThrow`) |
+| `STOCK_ALREADY_EXISTS` | 400 BAD_REQUEST | S002 | 이미 해당 창고에 등록된 재고가 존재합니다. | 동일 창고/상품 조합으로 중복 재고 생성 시도 시 |
+| `NOT_ENOUGH_STOCK` | 400 BAD_REQUEST | S003 | 가용 재고 수량이 부족합니다. | 선점/출고 시 가용 재고(`quantity - allocatedQuantity`) 초과 시 |
+| `INVALID_STOCK_AMOUNT` | 400 BAD_REQUEST | S004 | 재고 수량은 0보다 커야 합니다. | 0 이하 수량 입력 또는 선점 수량 미만으로 수동 조정 시 |
+| `INVALID_INPUT_VALUE` | 400 BAD_REQUEST | C001 | 입력값이 올바르지 않습니다. | `@Valid` 검증 실패 또는 필수 값 누락 시 |
+| `INVALID_TYPE_VALUE` | 400 BAD_REQUEST | C002 | 잘못된 타입의 값이 전달되었습니다. | 컨트롤러 파라미터 타입 불일치 등 예외 발생 시 |
+* **글로벌 파이프라인 핸들링:** 컨트롤러 레이어의 `@Valid` 바인딩 실패(`MethodArgumentNotValidException`) 및 타입 변환 오류(`MethodArgumentTypeMismatchException`)는 각각 `C001(INVALID_INPUT_VALUE)`, `C002(INVALID_TYPE_VALUE)`로 자동 캡처되어 동일한 `ErrorResponse` 규격으로 변환됩니다.
 * **입력값 검증 예외 (`IllegalArgumentException`):** `adjust` 수행 시 필수 인자인 조정 사유(`reasonDetail`)가 누락되거나 공백(`isBlank()`)인 경우 발생합니다.
 
 ---
