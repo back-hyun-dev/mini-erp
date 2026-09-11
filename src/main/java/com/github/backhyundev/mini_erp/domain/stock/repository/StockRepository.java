@@ -8,5 +8,5 @@ import java.util.Optional;
 public interface StockRepository extends JpaRepository<Stock, Long> {
 
     // Product와 Stock이 분리되어 있으므로, productId로 해당 상품의 Stock을 조회
-    Optional<Stock> findByProductId(Long productId);
+    Optional<Stock> findByWarehouseIdAndProductId(Long warehouseId, Long productId);
 }
