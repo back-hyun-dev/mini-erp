@@ -50,6 +50,10 @@ public class Stock {
         this.allocatedQuantity = 0L; // 초기 할당 수량은 0
     }
 
+    public static Stock registerInitialStock(Long warehouseId, Long productId, Long initialQuantity) {
+        return new Stock(warehouseId, productId, initialQuantity);
+    }
+
     // === 가용 재고 조회 (핵심 비즈니스 메서드) ===
     public Long getAvailableQuantity() {
         return this.quantity - this.allocatedQuantity;
@@ -96,9 +100,15 @@ public class Stock {
     public void decrease(Long amount) {
         validatePositiveAmount(amount, "출고할 수량은 0보다 커야 합니다.");
 
-        // 선점된 재고 및 전체 재고 검증
+        // 1. 선점된 재고 수량 검증
         if (this.allocatedQuantity < amount) {
             throw new IllegalArgumentException("선점된 재고 수량을 초과하여 출고할 수 없습니다.");
+        }
+
+        // 2. 실재고 검증 추가: adjust로 인해 quantity < allocatedQuantity 상태가 되었을 때
+        // 실물 없는 재고가 출고되는 사고 차단
+        if (this.quantity < amount) {
+            throw new IllegalArgumentException("실재고(물리 재고)가 부족하여 출고할 수 없습니다.");
         }
 
         this.quantity -= amount;
@@ -108,12 +118,6 @@ public class Stock {
     // === 5. 재고 실사 조정 (파손/분실/전산 맞춤) ===
     public void adjust(Long targetQuantity) {
         validatePositiveOrZero(targetQuantity, "조정할 재고 수량은 0 이상이어야 합니다.");
-
-        if (targetQuantity < this.allocatedQuantity) {
-            throw new IllegalArgumentException(
-                    String.format("현재 선점된 주문 수량(%d)보다 적은 수량으로 재고를 조정할 수 없습니다.", this.allocatedQuantity)
-            );
-        }
 
         this.quantity = targetQuantity;
     }

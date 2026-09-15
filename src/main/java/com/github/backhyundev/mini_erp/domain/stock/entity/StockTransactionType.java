@@ -1,6 +1,7 @@
 package com.github.backhyundev.mini_erp.domain.stock.entity;
 
 public enum StockTransactionType {
+    CREATE,   // 최초 재고 등록
     INCOMING,   // 입고
     RESERVE,    // 결제 선점
     CANCEL,     // 선점 해제 (주문 취소)

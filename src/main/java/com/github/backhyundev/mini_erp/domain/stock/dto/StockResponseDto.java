@@ -14,7 +14,7 @@ public class StockResponseDto {
     private final Long availableQuantity; // 실제 주문/출고 가능한 가용 수량
 
     // Stock 엔티티 -> DTO 변환용 생성자
-    public StockResponseDto(Stock stock) {
+    private StockResponseDto(Stock stock) {
         this.stockId = stock.getId();
         this.warehouseId = stock.getWarehouseId();
         this.productId = stock.getProductId();
