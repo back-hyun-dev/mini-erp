@@ -20,101 +20,145 @@ public class StockService {
     private final StockHistoryRepository stockHistoryRepository;
     private static final String DEFAULT_SYSTEM_USER = "SYSTEM";
 
+    @Transactional
+    public void registerStock(Long warehouseId, Long productId, Long initialQuantity, String createdBy) {
+        // 1. 이미 등록된 재고인지 확인
+        if (stockRepository.findByWarehouseIdAndProductId(warehouseId, productId).isPresent()) {
+            throw new BusinessException(ErrorCode.STOCK_ALREADY_EXISTS);
+        }
+
+        // 2. 명시적인 정적 팩토리 메서드로 안전하게 최초 생성
+        Stock stock = Stock.registerInitialStock(warehouseId, productId, initialQuantity);
+        Stock savedStock = stockRepository.save(stock);
+
+        // 3. 최초 재고 히스토리 스냅샷 적재 (INIT)
+        StockHistory history = StockHistory.createInitHistory(savedStock, createdBy);
+        stockHistoryRepository.save(history);
+    }
+
     // 1. 단순 일반 입고 (주문/선점 전혀 상관없는 입고)
     @Transactional
-    public void increaseStock(Long productId, Long amount) {
-        increaseStock(productId, amount, null);
+    public void increaseStock(Long warehouseId, Long productId, Long amount) {
+        increaseStock(warehouseId, productId, amount, null);
     }
 
     // 2. 출고 후 반품 입고 (주문 연관 입고)
     @Transactional
-    public void increaseStock(Long productId, Long amount, Long orderId) {
-        // DB에 Stock이 없으면 STOCK_NOT_FOUND 에러 코드를 던짐
-        Stock stock = getStockByProductIdOrThrow(productId);
+    public void increaseStock(Long warehouseId, Long productId, Long amount, Long orderId) {
+        Stock stock = getStockOrThrow(warehouseId, productId);
 
-        // 수량 증가 (신규 생성이든 기존이든 quantity + amount)
+        Long beforeQuantity = stock.getQuantity();
+        Long beforeAllocated = stock.getAllocatedQuantity();
+
         stock.increase(amount);
 
-        recordHistory(stock.getId(), amount, StockTransactionType.INCOMING, orderId, DEFAULT_SYSTEM_USER);
+        StockHistory history = StockHistory.createAutoHistory(
+                stock, amount, beforeQuantity, beforeAllocated, StockTransactionType.INCOMING, orderId, DEFAULT_SYSTEM_USER
+        );
+        stockHistoryRepository.save(history);
     }
 
     // 3. 예약 주문건 입고 (입고되자마자 선점 묶음)
     @Transactional
-    public void increaseAndReserveStock(Long productId, Long amount, Long orderId) {
-        Stock stock = getStockByProductIdOrThrow(productId);
+    public void increaseAndReserveStock(Long warehouseId, Long productId, Long amount, Long orderId) {
+        Stock stock = getStockOrThrow(warehouseId, productId);
 
-        stock.increase(amount); // quantity 증가
-        stock.reserve(amount);  // allocatedQuantity 증가
+        // 1. 초기 스냅샷만 캡처
+        Long beforeQuantity = stock.getQuantity();
+        Long beforeAllocated = stock.getAllocatedQuantity();
 
-        recordHistory(stock.getId(), amount, StockTransactionType.INCOMING, orderId, DEFAULT_SYSTEM_USER);
+        // 2. 물리 입고
+        stock.increase(amount);
+        StockHistory movementHistory = StockHistory.createAutoHistory(
+                stock, amount, beforeQuantity, beforeAllocated, StockTransactionType.INCOMING, orderId, DEFAULT_SYSTEM_USER
+        );
+
+        // 3. 선점 처리 (선점 전 물리수량은 이미 증가된 stock.getQuantity()를 직접 전달)
+        stock.reserve(amount);
+        StockHistory allocationHistory = StockHistory.createAutoHistory(
+                stock, amount, stock.getQuantity(), beforeAllocated, StockTransactionType.RESERVE, orderId, DEFAULT_SYSTEM_USER
+        );
+
+        stockHistoryRepository.save(movementHistory);
+        stockHistoryRepository.save(allocationHistory);
     }
 
     // 4. 출고 전 취소 (선점 해제)
     @Transactional
-    public void cancelReservation(Long productId, Long amount, Long orderId) {
-        Stock stock = getStockByProductIdOrThrow(productId);
+    public void cancelReservation(Long warehouseId, Long productId, Long amount, Long orderId) {
+        Stock stock = getStockOrThrow(warehouseId, productId);
 
-        stock.release(amount); // allocatedQuantity 차감
+        Long beforeQuantity = stock.getQuantity();
+        Long beforeAllocated = stock.getAllocatedQuantity();
 
-        recordHistory(stock.getId(), amount, StockTransactionType.CANCEL, orderId, DEFAULT_SYSTEM_USER);
+        stock.release(amount);
+
+        StockHistory history = StockHistory.createAutoHistory(
+                stock, -amount, beforeQuantity, beforeAllocated, StockTransactionType.CANCEL, orderId, DEFAULT_SYSTEM_USER
+        );
+        stockHistoryRepository.save(history);
     }
 
     // 5. 주문 선점
     @Transactional
-    public void reserve(Long productId, Long amount, Long orderId) {
-        Stock stock = getStockByProductIdOrThrow(productId);
+    public void reserve(Long warehouseId, Long productId, Long amount, Long orderId) {
+        Stock stock = getStockOrThrow(warehouseId, productId);
+
+        Long beforeQuantity = stock.getQuantity();
+        Long beforeAllocated = stock.getAllocatedQuantity();
 
         stock.reserve(amount);
 
-        recordHistory(stock.getId(), amount, StockTransactionType.RESERVE, orderId, DEFAULT_SYSTEM_USER);
+        StockHistory history = StockHistory.createAutoHistory(
+                stock, amount, beforeQuantity, beforeAllocated, StockTransactionType.RESERVE, orderId, DEFAULT_SYSTEM_USER
+        );
+        stockHistoryRepository.save(history);
     }
 
     // 6. 출고 확정
     @Transactional
-    public void decrease(Long productId, Long amount, Long orderId) {
-        Stock stock = getStockByProductIdOrThrow(productId);
+    public void decrease(Long warehouseId, Long productId, Long amount, Long orderId) {
+        Stock stock = getStockOrThrow(warehouseId, productId);
+
+        Long beforeQuantity = stock.getQuantity();
+        Long beforeAllocated = stock.getAllocatedQuantity();
 
         stock.decrease(amount);
 
-        recordHistory(stock.getId(), amount, StockTransactionType.DECREASE, orderId, DEFAULT_SYSTEM_USER);
+        StockHistory history = StockHistory.createAutoHistory(
+                stock, -amount, beforeQuantity, beforeAllocated, StockTransactionType.DECREASE, orderId, DEFAULT_SYSTEM_USER
+        );
+        stockHistoryRepository.save(history);
     }
 
     // 7. 관리자가 조정 (파손 / 분실 등)
     @Transactional
-    public void adjust(Long productId, Long newQuantity, String reasonDetail, String adminUser) {
-        Stock stock = getStockByProductIdOrThrow(productId);
+    public void adjust(Long warehouseId, Long productId, Long newQuantity, String reasonDetail, String adminUser) {
+        Stock stock = getStockOrThrow(warehouseId, productId);
 
-        // 2. 사유 입력 검증 (수동 조정은 사유 필수)
         if (reasonDetail == null || reasonDetail.isBlank()) {
-            throw new IllegalArgumentException("재고 조정 시 사유(reasonDetail)는 필수입니다.");
+            throw new IllegalArgumentException("재고 조정 시 사유는 필수입니다.");
         }
 
-        // 3. 이전 수량 기록용 보관
-        Long previousQuantity = stock.getQuantity();
-
-        // 4. 엔티티 재고 조정 (엔티티 내부에서 newQuantity < allocatedQuantity 검증)
+        Long beforeQuantity = stock.getQuantity();
         stock.adjust(newQuantity);
 
-        // 5. 수동 히스토리 적재 (변동 차이값 = newQuantity - previousQuantity)
-        Long amountDiff = newQuantity - previousQuantity;
-        recordManualHistory(stock.getId(), amountDiff, StockTransactionType.ADJUST, reasonDetail, adminUser);
+        Long amountDiff = newQuantity - beforeQuantity;
+
+        StockHistory history = StockHistory.createManualHistory(
+                stock,
+                amountDiff,
+                beforeQuantity,
+                StockTransactionType.ADJUST,
+                reasonDetail,
+                adminUser
+        );
+        stockHistoryRepository.save(history);
     }
 
-    // Helper 메서드 (IllegalArgumentException -> BusinessException + ErrorCode로 변경)
-    private Stock getStockByProductIdOrThrow(Long productId) {
-        return stockRepository.findByProductId(productId)
+    // Helper 메서드 (창고 ID + 상품 ID 조합 조회)
+    private Stock getStockOrThrow(Long warehouseId, Long productId) {
+        return stockRepository.findByWarehouseIdAndProductId(warehouseId, productId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.STOCK_NOT_FOUND));
-    }
-
-    // 1. 기본 히스토리 적재
-    private void recordHistory(Long stockId, Long amount, StockTransactionType type, Long orderId, String createdBy) {
-        StockHistory history = StockHistory.createAutoHistory(stockId, amount, type, orderId, createdBy);
-        stockHistoryRepository.save(history);
-    }
-
-    // 2. 수동 조정 히스토리 적재 (조정)
-    private void recordManualHistory(Long stockId, Long amount, StockTransactionType type, String reasonDetail, String createdBy) {
-        StockHistory history = StockHistory.createManualHistory(stockId, amount, type, reasonDetail, createdBy);
-        stockHistoryRepository.save(history);
     }
 }
